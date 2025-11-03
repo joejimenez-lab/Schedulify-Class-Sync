@@ -1,0 +1,28 @@
+[project]
+name = "schedule-ocr"
+version = "0.1.0"
+description = "Local-first OCR → Calendar backend (FastAPI + Tesseract + optional Ollama)"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "pydantic>=2",
+  "python-multipart",
+  "pytesseract",
+  "opencv-python",
+  "numpy",
+  "dateparser",
+  "icalendar",
+  "python-dotenv",
+  "requests",
+  "pdf2image",
+  "Pillow",
+  "pytz",
+  "typing-extensions"
+]
+
+[tool.uvicorn]
+factory = false
+host = "0.0.0.0"
+port = 8000
+reload = true

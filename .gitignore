@@ -1,0 +1,121 @@
+# ---------------------------------------
+# 🔧 Environment & Secrets
+# ---------------------------------------
+.env
+.env.*
+!.env.example
+frontend/.env.local
+frontend/.env.local.*
+!frontend/.env.local.example
+
+# ---------------------------------------
+# 🐍 Python
+# ---------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+.eggs/
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+pip-wheel-metadata/
+wheels/
+venv/
+.venv/
+env/
+ENV/
+.ipynb_checkpoints/
+.mypy_cache/
+.pytest_cache/
+.pytype/
+.coverage
+htmlcov/
+.pyre/
+.dmypy.json
+.cache/
+.idea/
+
+# ---------------------------------------
+# 🧰 Node / Next.js
+# ---------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+pnpm-lock.yaml
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+
+# ---------------------------------------
+# 🧠 Frontend assets
+# ---------------------------------------
+*.log
+.DS_Store
+Thumbs.db
+public/.DS_Store
+
+# ---------------------------------------
+# ⚙️ VS Code / Editors
+# ---------------------------------------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ---------------------------------------
+# 🧪 Tests & Coverage
+# ---------------------------------------
+.coverage
+*.cover
+coverage.xml
+nosetests.xml
+pytestdebug.log
+junitxml*
+
+# ---------------------------------------
+# 🖼️ Generated / Temporary
+# ---------------------------------------
+*.tmp
+*.temp
+*.log
+*.bak
+*.swp
+*.swo
+*.orig
+*.lock
+*.pid
+*.csv
+*.ics
+
+# ---------------------------------------
+# 🧱 Local data
+# ---------------------------------------
+docs/samples/*.jpg
+docs/samples/*.png
+docs/samples/*.pdf
+!docs/samples/.keep
+
+# ---------------------------------------
+# 🧩 Mac / System files
+# ---------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+ehthumbs.db
+Thumbs.db
