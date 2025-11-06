@@ -1,103 +1,97 @@
+from __future__ import annotations
+from typing import List
+from .schema import ClassBlock, EventRow, WEEKDAY_ALIASES
 import re
-from typing import List, Dict, Tuple, Optional
-import dateparser
 
-DAY_ALIASES = {
-    "mon": "MO", "m": "MO",
-    "tue": "TU", "tu": "TU", "t": "TU",
-    "wed": "WE", "w": "WE",
-    "thu": "TH", "thur": "TH", "th": "TH",
-    "fri": "FR", "f": "FR",
-    "sat": "SA", "sa": "SA",
-    "sun": "SU", "su": "SU"
-}
+def normalize_days(day_tokens: List[str]) -> List[int]:
+    out: List[int] = []
+    for token in day_tokens:
+        t = token.strip().lower()
+        # split "mwf" style into chars while preserving "th"
+        # quick pass for compact patterns:
+        if t in WEEKDAY_ALIASES:
+            out.append(WEEKDAY_ALIASES[t])
+            continue
 
-TIME_RE = re.compile(r"(\d{1,2})(?::(\d{2}))?\s*([ap]m)?", re.I)
-RANGE_RE = re.compile(r"(\d{1,2}(?::\d{2})?\s*[ap]m)\s*[-–—]\s*(\d{1,2}(?::\d{2})?\s*[ap]m)", re.I)
+        # expand compact like "mwf" or "tuth"
+        # replace "th" with "X" sentinel, then iterate letters
+        tt = t.replace("th", "X")
+        for ch in list(tt):
+            key = {"m":"m","t":"t","w":"w","f":"f","s":"sa","X":"th","u":"su"}.get(ch)
+            if not key:
+                continue
+            idx = WEEKDAY_ALIASES.get(key)
+            if idx is not None:
+                out.append(idx)
 
-DATE_RANGE_RE = re.compile(
-    r'(?P<start>(?:\d{1,2}/\d{1,2}/\d{2,4})|(?:[A-Za-z]{3,9}\s+\d{1,2},\s*\d{4}))\s*(?:-|to|through|–|—)\s*'
-    r'(?P<end>(?:\d{1,2}/\d{1,2}/\d{2,4})|(?:[A-Za-z]{3,9}\s+\d{1,2},\s*\d{4}))',
-    re.I
-)
-TERM_LABEL_RE = re.compile(r'(spring|summer|fall|autumn|winter)\s+\d{4}', re.I)
+    # de-duplicate, keep order
+    seen = set()
+    ordered = []
+    for i in out:
+        if i not in seen:
+            seen.add(i)
+            ordered.append(i)
+    return ordered
 
-def _parse_time_token(s: str) -> Optional[str]:
-    m = TIME_RE.search(s)
-    if not m:
-        return None
-    hh = int(m.group(1))
-    mm = int(m.group(2) or "0")
-    ampm = (m.group(3) or "").lower()
-    if ampm:
-        if ampm == "pm" and hh != 12:
-            hh += 12
-        if ampm == "am" and hh == 12:
-            hh = 0
-    return f"{hh:02d}:{mm:02d}"
+def from_gemini_json(data) -> List[EventRow]:
+    """
+    Accepts any of:
+      - [{"title":..., "days":..., "start_time":..., ...}, ...]
+      - {"classes": [...]}   (legacy)
+      - {"events":  [...]}   (fallback)
+      - {"items":   [...]}   (fallback)
+    Normalizes days and builds EventRow list.
+    """
+    events: List[EventRow] = []
 
-def detect_days(text: str) -> List[str]:
-    tokens = re.split(r"[^A-Za-z/]+", text.lower())
-    days = set()
-    for tok in tokens:
-        parts = re.split(r"[\/&,-]", tok)
-        for p in parts:
-            if p in DAY_ALIASES:
-                days.add(DAY_ALIASES[p])
-            elif p in ["mw", "tuth", "mwf", "wf"]:
-                if p == "mw": days.update(["MO", "WE"])
-                if p == "tuth": days.update(["TU", "TH"])
-                if p == "mwf": days.update(["MO", "WE", "FR"])
-                if p == "wf": days.update(["WE", "FR"])
-    return sorted(days)
+    # Normalize the top-level container
+    if isinstance(data, list):
+        raw = data
+    elif isinstance(data, dict):
+        raw = data.get("classes") or data.get("events") or data.get("items") or []
+        if not isinstance(raw, list):
+            raise TypeError("Expected list under 'classes'/'events'/'items'.")
+    else:
+        raise TypeError("from_gemini_json expected a list or dict.")
 
-def detect_term(text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    label = None
-    mlabel = TERM_LABEL_RE.search(text)
-    if mlabel:
-        label = mlabel.group(0).title()
-    m = DATE_RANGE_RE.search(text)
-    if m:
-        sd = dateparser.parse(m.group("start"))
-        ed = dateparser.parse(m.group("end"))
-        return (
-            sd.strftime("%Y-%m-%d") if sd else None,
-            ed.strftime("%Y-%m-%d") if ed else None,
-            label
+    for item in raw:
+        if not isinstance(item, dict):
+            # skip junk rows
+            continue
+
+        # Accept "days" or a single "day"
+        days_field = item.get("days")
+        if days_field is None and "day" in item:
+            days_field = item["day"]
+
+        if isinstance(days_field, str):
+            day_tokens = [days_field]
+        elif isinstance(days_field, list):
+            tokens = []
+            for d in days_field:
+                tokens += re.split(r"[,\s/]+", str(d))
+            day_tokens = [t for t in tokens if t]
+        else:
+            day_tokens = []
+
+        days = normalize_days(day_tokens)
+        if not days:
+            # Skip entries with no parsed days (likely noise)
+            continue
+
+        block = ClassBlock(
+            title=(item.get("title") or "Class").strip(),
+            days=days,
+            start_time=item.get("start_time") or "09:00",
+            end_time=item.get("end_time") or "10:00",
+            location=(item.get("location") or None) or None,
+            instructor=(item.get("instructor") or None) or None,
+            notes=(item.get("notes") or None) or None,
         )
-    return None, None, label
 
-def extract_blocks(ocr_text: str) -> List[Dict]:
-    """
-    Heuristic multi-class extractor:
-    - Walk lines and buffer until we see (days + time range)
-    - Each match → an event row
-    """
-    lines = [ln.strip() for ln in ocr_text.splitlines() if ln.strip()]
-    events: List[Dict] = []
-    buf: List[str] = []
-
-    for ln in lines:
-        buf.append(ln)
-        joined = " ".join(buf)
-        days = detect_days(joined)
-        r = RANGE_RE.search(joined)
-        if days and r:
-            start = _parse_time_token(r.group(1))
-            end = _parse_time_token(r.group(2))
-            if start and end:
-                events.append({
-                    "title": joined,           # user can clean this in UI
-                    "days": days,
-                    "start_time": start,
-                    "end_time": end,
-                    "start_date": None,
-                    "end_date": None,
-                    "location": None,
-                    "instructor": None,
-                    "notes": None,
-                    "termLabel": None
-                })
-                buf = []  # reset for next block
+        event = block.to_event().model_copy(
+            update={"termLabel": item.get("termLabel") or None}
+        )
+        events.append(event)
 
     return events

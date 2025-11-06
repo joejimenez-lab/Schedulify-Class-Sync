@@ -1,28 +1,25 @@
 [project]
-name = "schedule-ocr"
+name = "schedule-ocr-backend"
 version = "0.1.0"
-description = "Local-first OCR → Calendar backend (FastAPI + Tesseract + optional Ollama)"
-requires-python = ">=3.11"
+description = "Screenshot -> Gemini -> JSON -> ICS"
+readme = "README.md"
+requires-python = ">=3.10"
 dependencies = [
-  "fastapi",
-  "uvicorn[standard]",
-  "pydantic>=2",
-  "python-multipart",
-  "pytesseract",
-  "opencv-python",
-  "numpy",
-  "dateparser",
-  "icalendar",
-  "python-dotenv",
-  "requests",
-  "pdf2image",
-  "Pillow",
-  "pytz",
-  "typing-extensions"
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "python-multipart>=0.0.9",
+  "pydantic>=2.8.0",
+  "pydantic-settings>=2.4.0",
+  "python-dateutil>=2.9.0.post0",
+  "pytz>=2024.1",
+  "Pillow>=10.0.0",
+  "google-generativeai>=0.7.2",
+  "icalendar>=5.0.12",
+  "python-dotenv>=1.0.1",
 ]
 
 [tool.uvicorn]
-factory = false
-host = "0.0.0.0"
-port = 8000
+host = "127.0.0.1"
+port = 8001
 reload = true
+factory = false

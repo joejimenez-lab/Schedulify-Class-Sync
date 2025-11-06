@@ -1,106 +1,154 @@
+from __future__ import annotations
+
+import io
 import os
-from typing import Optional
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse, PlainTextResponse
+from datetime import date
+from typing import List, Optional, Tuple
+
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 
-from .schema import ExtractResponse
-from .ocr import ocr_to_text
-from .parser import extract_blocks, detect_term
-from .llm_ollama import normalize_with_ollama
+from .schema import EventRow, ExtractResponse, ICSRequest
+from .llm_gemini import extract_from_image
+from .parser import from_gemini_json
+from .build_calendar import infer_range
 from .ics import build_ics
 
-# Load environment (.env at repo root or backend/)
-load_dotenv()
+load_dotenv()  # load .env at startup
 
-API_TITLE = "Schedule OCR Backend"
-API_VERSION = "0.1.0"
+app = FastAPI(title="Schedulify Class Sync (Backend)")
 
-app = FastAPI(title=API_TITLE, version=API_VERSION)
 
-# CORS (dev-friendly; lock down in prod)
-origins = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:3000").split(",")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[o.strip() for o in origins if o.strip()],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def _resolve_timezone(tz_name: Optional[str]) -> str:
+    return tz_name or os.environ.get("DEFAULT_TIMEZONE") or "UTC"
 
-@app.get("/healthz", response_class=PlainTextResponse)
-def healthz():
-    return "ok"
 
-@app.post("/extract-local", response_model=ExtractResponse)
-async def extract_local(
-    file: UploadFile = File(...),
-    timezone: str = Form("America/Los_Angeles"),
-    fill_term_from_page: bool = Form(True)
-):
-    """
-    Pure local: Tesseract OCR + heuristic parser.
-    - Detects multiple classes
-    - Optionally auto-fills term range from page text when present
-    """
-    data = await file.read()
-    text = ocr_to_text(data)
-    events = extract_blocks(text)
-
-    term_sd, term_ed, term_label = detect_term(text) if fill_term_from_page else (None, None, None)
+def _apply_global_dates(
+    events: List[EventRow],
+    start: Optional[date],
+    end: Optional[date],
+) -> List[EventRow]:
+    updated: List[EventRow] = []
     for ev in events:
-        if term_sd and not ev.get("start_date"):
-            ev["start_date"] = term_sd
-        if term_ed and not ev.get("end_date"):
-            ev["end_date"] = term_ed
-        if term_label and not ev.get("termLabel"):
-            ev["termLabel"] = term_label
+        updates = {}
+        if start and ev.start_date is None:
+            updates["start_date"] = start
+        if end and ev.end_date is None:
+            updates["end_date"] = end
+        updated.append(ev if not updates else ev.model_copy(update=updates))
+    return updated
 
-    return JSONResponse({"events": events, "timezone": timezone})
 
-@app.post("/extract-ai", response_model=ExtractResponse)
-async def extract_ai(
-    file: UploadFile = File(...),
-    timezone: str = Form("America/Los_Angeles"),
-    use_heuristics_first: bool = Form(True)
+def _resolve_date_range(
+    events: List[EventRow],
+    start: Optional[date],
+    end: Optional[date],
+) -> Tuple[date, date]:
+    event_starts = [ev.start_date for ev in events if ev.start_date]
+    event_ends = [ev.end_date for ev in events if ev.end_date]
+
+    resolved_start = start or (min(event_starts) if event_starts else None)
+    resolved_end = end or (max(event_ends) if event_ends else None)
+
+    if resolved_start is None or resolved_end is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide start_date and end_date (either globally or per event).",
+        )
+    if resolved_start > resolved_end:
+        raise HTTPException(
+            status_code=400,
+            detail="start_date must be before end_date.",
+        )
+    return resolved_start, resolved_end
+
+
+def _stream_ics(data: bytes, filename: str = "schedule.ics") -> StreamingResponse:
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(io.BytesIO(data), headers=headers, media_type="text/calendar")
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+@app.post("/extract-gemini", response_model=ExtractResponse)
+async def extract_gemini(
+    file: UploadFile = File(..., description="Screenshot image"),
+    start_date: Optional[date] = Form(None),
+    end_date: Optional[date] = Form(None),
+    timezone: Optional[str] = Form(None),
+    include_heuristic_hint: Optional[bool] = Form(None),
 ):
-    """
-    Local LLM normalization via Ollama.
-    - OCR with Tesseract
-    - If use_heuristics_first, we prepend heuristic extraction text to help the LLM
-    """
-    data = await file.read()
-    ocr_text = ocr_to_text(data)
-    hint = ""
+    if not file.content_type or not file.content_type.startswith(("image/", "application/pdf")):
+        raise HTTPException(status_code=400, detail="Please upload an image file (png/jpg/pdf).")
 
-    if use_heuristics_first:
-        # Create a compact hint (optional)
-        rough = extract_blocks(ocr_text)
-        if rough:
-            hint_lines = []
-            for r in rough:
-                hint_lines.append(
-                    f"{r['title']} | days={','.join(r['days'])} | {r['start_time']}-{r['end_time']}"
-                )
-            hint = "HEURISTIC PREVIEW:\n" + "\n".join(hint_lines) + "\n---\n"
+    image_bytes = await file.read()
+    raw = extract_from_image(image_bytes)
+    events = from_gemini_json(raw)
+    tz = _resolve_timezone(timezone)
 
-    parsed = normalize_with_ollama(hint + ocr_text, timezone=timezone)
-    parsed["timezone"] = parsed.get("timezone", timezone)
-    return JSONResponse(parsed)
+    events = _apply_global_dates(events, start_date, end_date)
+
+    has_start = bool(start_date) or any(ev.start_date for ev in events)
+    has_end = bool(end_date) or any(ev.end_date for ev in events)
+    needs_dates = not (has_start and has_end)
+
+    inferred_start = None
+    inferred_end = None
+    if start_date or end_date:
+        inferred_start, inferred_end, _ = infer_range(start_date, end_date, tz)
+    else:
+        event_starts = [ev.start_date for ev in events if ev.start_date]
+        event_ends = [ev.end_date for ev in events if ev.end_date]
+        if event_starts:
+            inferred_start = min(event_starts)
+        if event_ends:
+            inferred_end = max(event_ends)
+
+    note = None
+    if needs_dates:
+        note = "Add the term's start and end dates before exporting to calendar."
+
+    return ExtractResponse(
+        events=events,
+        timezone=tz,
+        inferred_start=inferred_start,
+        inferred_end=inferred_end,
+        needs_dates=needs_dates,
+        note=note,
+    )
+
+@app.post("/extract-to-ics")
+async def extract_to_ics(
+    file: UploadFile = File(...),
+    start_date: Optional[date] = Form(None),
+    end_date: Optional[date] = Form(None),
+    timezone: Optional[str] = Form(None),
+):
+    # 1) extract
+    image_bytes = await file.read()
+    raw = extract_from_image(image_bytes)
+    events = from_gemini_json(raw)
+    events = _apply_global_dates(events, start_date, end_date)
+    tz = _resolve_timezone(timezone)
+    start, end = _resolve_date_range(events, start_date, end_date)
+    # 3) build ICS
+    try:
+        ics_bytes = build_ics(events, tz, start, end)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _stream_ics(ics_bytes)
 
 @app.post("/ics")
-async def make_ics(payload: ExtractResponse):
-    """
-    Build and return a downloadable .ics for all valid rows.
-    """
-    data = build_ics(payload.model_dump())
-    headers = {"Content-Disposition": "attachment; filename=schedule.ics"}
-    return StreamingResponse(iter([data]), media_type="text/calendar", headers=headers)
-
-# Optional: debug endpoint to see raw OCR text for a given upload
-@app.post("/debug/ocrtext", response_class=PlainTextResponse)
-async def debug_ocrtext(file: UploadFile = File(...)):
-    data = await file.read()
-    text = ocr_to_text(data)
-    return text
+@app.post("/make-ics")
+async def make_ics(payload: ICSRequest):
+    events = _apply_global_dates(payload.events, payload.start_date, payload.end_date)
+    tz = _resolve_timezone(payload.timezone)
+    start, end = _resolve_date_range(events, payload.start_date, payload.end_date)
+    try:
+        ics_bytes = build_ics(events, tz, start, end)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _stream_ics(ics_bytes)

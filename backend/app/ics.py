@@ -1,57 +1,81 @@
-from icalendar import Calendar, Event
-from datetime import datetime
+from __future__ import annotations
+from datetime import datetime, timedelta, date
+from typing import List, Optional
 import pytz
+from icalendar import Calendar, Event
+from dateutil.rrule import rrule, WEEKLY
 
-def build_ics(payload: dict) -> bytes:
-    """
-    Build a single .ics with weekly recurring events for all rows.
-    payload = {"events":[...], "timezone":"America/Los_Angeles"}
-    """
+from .schema import EventRow, DAY_CODE_TO_INDEX
+
+def _first_occurrence_on_or_after(start_date: date, weekday: int) -> date:
+    """Return the date of the first given weekday on/after start_date."""
+    delta = (weekday - start_date.weekday()) % 7
+    return start_date + timedelta(days=delta)
+
+def _parse_hhmm(s: str) -> tuple[int, int]:
+    h, m = s.split(":")
+    return int(h), int(m)
+
+def build_ics(
+    events: List[EventRow],
+    tz_name: str,
+    start_date: date,
+    end_date: date,
+    calendar_name: str = "Class Schedule",
+) -> bytes:
+    tz = pytz.timezone(tz_name)
     cal = Calendar()
-    cal.add("prodid", "-//Schedule OCR//")
+    cal.add("prodid", "-//Schedulify Class Sync//")
     cal.add("version", "2.0")
+    cal.add("X-WR-CALNAME", calendar_name)
+    cal.add("X-WR-TIMEZONE", tz_name)
 
-    tzname = payload.get("timezone", "America/Los_Angeles")
-    tz = pytz.timezone(tzname)
-
-    for e in payload.get("events", []):
-        start_date = e.get("start_date")
-        end_date = e.get("end_date")
-        start_time = e.get("start_time")
-        end_time = e.get("end_time")
-        days = e.get("days") or []
-
-        # Skip incomplete rows
-        if not (start_date and end_date and start_time and end_time and days):
+    for row in events:
+        if not row.days:
             continue
 
-        y, m, d = [int(x) for x in start_date.split("-")]
-        sh, sm = [int(x) for x in start_time.split(":")]
-        eh, em = [int(x) for x in end_time.split(":")]
+        event_start: Optional[date] = row.start_date or start_date
+        event_end: Optional[date] = row.end_date or end_date
 
-        dt_start = tz.localize(datetime(y, m, d, sh, sm))
-        dt_end = tz.localize(datetime(y, m, d, eh, em))
+        if event_start is None or event_end is None:
+            raise ValueError(f"Missing date range for {row.title}")
+        if event_start > event_end:
+            raise ValueError(f"start_date after end_date for {row.title}")
 
-        # UNTIL must be UTC datetime
-        uy, um, ud = [int(x) for x in end_date.split("-")]
-        until_utc = tz.localize(datetime(uy, um, ud, 23, 59, 59)).astimezone(pytz.utc)
+        sh, sm = _parse_hhmm(row.start_time)
+        eh, em = _parse_hhmm(row.end_time)
 
-        ev = Event()
-        ev.add("summary", e.get("title", "Class"))
-        if e.get("location"):
-            ev.add("location", e["location"])
-        if e.get("notes"):
-            ev.add("description", e["notes"])
+        for code in row.days:
+            weekday = DAY_CODE_TO_INDEX.get(code)
+            if weekday is None:
+                continue
 
-        ev.add("dtstart", dt_start)
-        ev.add("dtend", dt_end)
-        # rrule: weekly on specified days, until end date
-        ev.add("rrule", {
-            "FREQ": "WEEKLY",
-            "BYDAY": days,       # list like ["MO","WE"]
-            "UNTIL": until_utc
-        })
+            first = _first_occurrence_on_or_after(event_start, weekday)
+            if first > event_end:
+                continue
 
-        cal.add_component(ev)
+            dtstart = tz.localize(datetime(first.year, first.month, first.day, sh, sm))
+            dtend = tz.localize(datetime(first.year, first.month, first.day, eh, em))
+
+            ev = Event()
+            ev.add("summary", row.title or "Class")
+            if row.location:
+                ev.add("location", row.location)
+            desc = []
+            if row.instructor:
+                desc.append(f"Instructor: {row.instructor}")
+            if row.notes:
+                desc.append(row.notes)
+            if row.termLabel:
+                desc.append(f"Term: {row.termLabel}")
+            if desc:
+                ev.add("description", "\n".join(desc))
+            ev.add("dtstart", dtstart)
+            ev.add("dtend", dtend)
+            until_dt = tz.localize(
+                datetime(event_end.year, event_end.month, event_end.day, 23, 59, 59)
+            ).astimezone(pytz.utc)
+            ev.add("rrule", {"freq": "weekly", "until": until_dt})
+            cal.add_component(ev)
 
     return cal.to_ical()
