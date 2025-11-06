@@ -6,6 +6,7 @@ from datetime import date
 from typing import List, Optional, Tuple
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 
@@ -18,6 +19,17 @@ from .ics import build_ics
 load_dotenv()  # load .env at startup
 
 app = FastAPI(title="Schedulify Class Sync (Backend)")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def _resolve_timezone(tz_name: Optional[str]) -> str:
