@@ -1,0 +1,68 @@
+{
+  "events": [
+    {
+      "title": "CS 4661-01",
+      "days": [
+        "FR"
+      ],
+      "start_time": "12:00",
+      "end_time": "14:45",
+      "location": "ASCB 132",
+      "instructor": null,
+      "notes": null,
+      "start_date": null,
+      "end_date": null,
+      "termLabel": null
+    },
+    {
+      "title": "CS 5220-01",
+      "days": [
+        "MO",
+        "WE"
+      ],
+      "start_time": "19:25",
+      "end_time": "20:40",
+      "location": "KH D1041",
+      "instructor": null,
+      "notes": null,
+      "start_date": null,
+      "end_date": null,
+      "termLabel": null
+    },
+    {
+      "title": "CS 5337-01",
+      "days": [
+        "TU",
+        "SU",
+        "TH"
+      ],
+      "start_time": "12:15",
+      "end_time": "13:30",
+      "location": "ET A406",
+      "instructor": null,
+      "notes": null,
+      "start_date": null,
+      "end_date": null,
+      "termLabel": null
+    },
+    {
+      "title": "CS 5660-01",
+      "days": [
+        "TU",
+        "SU",
+        "TH"
+      ],
+      "start_time": "16:30",
+      "end_time": "17:45",
+      "location": "ET A332",
+      "instructor": null,
+      "notes": null,
+      "start_date": null,
+      "end_date": null,
+      "termLabel": null
+    }
+  ],
+  "timezone": "America/Los_Angeles",
+  "start_date": "2025-01-27",
+  "end_date": "2025-03-02"
+}
