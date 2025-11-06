@@ -265,6 +265,16 @@ select {
   color: #0f172a;
 }
 
+.callout.emphasis {
+  border: 1px solid #fbbf24;
+  box-shadow: 0 10px 30px rgba(251, 191, 36, 0.25);
+}
+
+.field-missing input {
+  border-color: #f97316;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.4);
+}
+
 .event-list {
   display: flex;
   flex-direction: column;

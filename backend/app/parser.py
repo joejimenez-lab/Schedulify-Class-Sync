@@ -3,26 +3,49 @@ from typing import List
 from .schema import ClassBlock, EventRow, WEEKDAY_ALIASES
 import re
 
+COMPACT_DAY_SEQUENCES = [
+    ("th", "th"),
+    ("tu", "tu"),
+    ("su", "su"),
+    ("sa", "sa"),
+    ("mo", "mo"),
+]
+
+def _expand_compact(token: str) -> List[int]:
+    """Split strings like 'TuTh' or 'MWF' into weekday indices."""
+    indices: List[int] = []
+    s = token
+    i = 0
+    while i < len(s):
+        matched = False
+        # prioritize digraphs such as Th, Tu, Sa, Su
+        for pattern, alias in COMPACT_DAY_SEQUENCES:
+            if s.startswith(pattern, i):
+                idx = WEEKDAY_ALIASES.get(alias)
+                if idx is not None:
+                    indices.append(idx)
+                i += len(pattern)
+                matched = True
+                break
+        if matched:
+            continue
+        ch = s[i]
+        idx = WEEKDAY_ALIASES.get(ch)
+        if idx is not None:
+            indices.append(idx)
+        i += 1
+    return indices
+
 def normalize_days(day_tokens: List[str]) -> List[int]:
     out: List[int] = []
     for token in day_tokens:
         t = token.strip().lower()
-        # split "mwf" style into chars while preserving "th"
-        # quick pass for compact patterns:
+        if not t:
+            continue
         if t in WEEKDAY_ALIASES:
             out.append(WEEKDAY_ALIASES[t])
             continue
-
-        # expand compact like "mwf" or "tuth"
-        # replace "th" with "X" sentinel, then iterate letters
-        tt = t.replace("th", "X")
-        for ch in list(tt):
-            key = {"m":"m","t":"t","w":"w","f":"f","s":"sa","X":"th","u":"su"}.get(ch)
-            if not key:
-                continue
-            idx = WEEKDAY_ALIASES.get(key)
-            if idx is not None:
-                out.append(idx)
+        out.extend(_expand_compact(t))
 
     # de-duplicate, keep order
     seen = set()

@@ -116,6 +116,8 @@ export default function HomePage() {
 
   const hasEvents = events.length > 0;
   const canDownload = hasEvents && Boolean(startDate.trim() && endDate.trim()) && !busy;
+  const startMissing = needsDates && !startDate.trim();
+  const endMissing = needsDates && !endDate.trim();
 
   const onFileChange = (f: File | null) => {
     setFile(f);
@@ -277,6 +279,12 @@ export default function HomePage() {
         </div>
       </header>
 
+      {needsDates && (
+        <div className="callout warning emphasis">
+          Gemini didn’t capture the overall term dates. Enter the start and end of the term below so we can build the calendar.
+        </div>
+      )}
+
       <section className="grid">
         <div className="card">
           <div className="card-header">
@@ -325,7 +333,7 @@ export default function HomePage() {
             <span>Timezone</span>
             <input value={timezone} onChange={(e) => setTimezone(e.target.value)} />
           </label>
-          <label className="field">
+          <label className={`field ${startMissing ? "field-missing" : ""}`}>
             <span>Start date</span>
             <input
               type="date"
@@ -333,7 +341,7 @@ export default function HomePage() {
               onChange={(e) => setStartDate(e.target.value)}
             />
           </label>
-          <label className="field">
+          <label className={`field ${endMissing ? "field-missing" : ""}`}>
             <span>End date</span>
             <input
               type="date"

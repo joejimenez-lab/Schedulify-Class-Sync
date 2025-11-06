@@ -6,12 +6,14 @@ from pydantic import BaseModel, Field, field_validator
 
 WEEKDAY_ALIASES = {
     "m": 0, "mon": 0, "monday": 0,
-    "t": 1, "tue": 1, "tues": 1, "tuesday": 1,
+    "mo": 0,
+    "t": 1, "tu": 1, "tue": 1, "tues": 1, "tuesday": 1,
     "w": 2, "wed": 2, "wednesday": 2,
     "th": 3, "thu": 3, "thur": 3, "thurs": 3, "thursday": 3,
     "f": 4, "fri": 4, "friday": 4,
     "sa": 5, "sat": 5, "saturday": 5,
     "su": 6, "sun": 6, "sunday": 6,
+    "u": 6,
 }
 
 DAY_CODES = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
