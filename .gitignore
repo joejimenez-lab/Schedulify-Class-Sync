@@ -1,11 +1,12 @@
 # ---------------------------------------
-# 🔧 Environment & Secrets
+# 🔐 Environment & Secrets
 # ---------------------------------------
 .env
 .env.*
 !.env.example
+backend/.env
 frontend/.env.local
-frontend/.env.local.*
+frontend/.env.*.local
 !frontend/.env.local.example
 
 # ---------------------------------------
@@ -16,106 +17,74 @@ __pycache__/
 *.pyo
 *.pyd
 *.so
-*.egg
+.python-version
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+.pyre/
+.ruff_cache/
 *.egg-info/
 .eggs/
-.Python
-build/
-develop-eggs/
 dist/
-downloads/
-pip-wheel-metadata/
+build/
 wheels/
+*.egg
 venv/
 .venv/
-env/
 ENV/
-.ipynb_checkpoints/
-.mypy_cache/
-.pytest_cache/
-.pytype/
-.coverage
-htmlcov/
-.pyre/
-.dmypy.json
-.cache/
-.idea/
+env/
 
 # ---------------------------------------
 # 🧰 Node / Next.js
 # ---------------------------------------
 node_modules/
+.next/
+.turbo/
+.vercel/
+out/
+.pnp.cjs
+.pnp.loader.mjs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 package-lock.json
 pnpm-lock.yaml
-.next/
-out/
-build/
-dist/
-*.tsbuildinfo
 
 # ---------------------------------------
-# 🧠 Frontend assets
+# 🧪 Coverage / Logs
 # ---------------------------------------
+.coverage
+coverage/
+coverage.xml
+nosetests.xml
+junitxml*
+logs/
 *.log
-.DS_Store
-Thumbs.db
-public/.DS_Store
 
 # ---------------------------------------
-# ⚙️ VS Code / Editors
+# 🧠 Editor / OS junk
 # ---------------------------------------
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
-!.vscode/launch.json
-!.vscode/tasks.json
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Icon?
+.vscode/
 .idea/
 *.sublime-project
 *.sublime-workspace
 
 # ---------------------------------------
-# 🧪 Tests & Coverage
-# ---------------------------------------
-.coverage
-*.cover
-coverage.xml
-nosetests.xml
-pytestdebug.log
-junitxml*
-
-# ---------------------------------------
-# 🖼️ Generated / Temporary
+# 🗂️ Misc temp files
 # ---------------------------------------
 *.tmp
 *.temp
-*.log
-*.bak
 *.swp
 *.swo
+*.bak
 *.orig
 *.lock
 *.pid
-*.csv
 *.ics
-
-# ---------------------------------------
-# 🧱 Local data
-# ---------------------------------------
-docs/samples/*.jpg
-docs/samples/*.png
-docs/samples/*.pdf
-!docs/samples/.keep
-
-# ---------------------------------------
-# 🧩 Mac / System files
-# ---------------------------------------
-.DS_Store
-.AppleDouble
-.LSOverride
-Icon?
-ehthumbs.db
-Thumbs.db

@@ -7,7 +7,7 @@ from PIL import Image
 import google.generativeai as genai
 from dotenv import load_dotenv, find_dotenv
 
-GEMINI_MODEL = "models/gemini-2.0-flash"  # fast + vision
+DEFAULT_GEMINI_MODEL = "models/gemini-2.0-flash"  # fast + vision
 
 # ---- Prompt tuned to your parser expectations ----
 # Your parser builds EventRow via ClassBlock and accepts:
@@ -47,6 +47,11 @@ def _load_env_and_configure():
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY / GOOGLE_API_KEY not set. Add it to backend/.env")
     genai.configure(api_key=api_key)
+
+
+def _model_name() -> str:
+    # Allow override via env (GEMINI_MODEL) while keeping a sensible default.
+    return os.getenv("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
 
 def _image_part(image_bytes: bytes) -> Dict[str, Any]:
     # Pillow verifies bytes are a real image (and helps early error messages)
@@ -119,7 +124,7 @@ def extract_from_image(image_bytes: bytes, ocr_hint: Optional[str] = None) -> Li
     _load_env_and_configure()
 
     model = genai.GenerativeModel(
-        GEMINI_MODEL,
+        _model_name(),
         generation_config={
             # This strongly biases the model to return JSON (and only JSON)
             "temperature": 0,

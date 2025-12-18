@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, timedelta, date
 from typing import List, Optional
+from uuid import uuid4
 import pytz
 from icalendar import Calendar, Event
 from dateutil.rrule import rrule, WEEKLY
@@ -58,6 +59,8 @@ def build_ics(
             dtend = tz.localize(datetime(first.year, first.month, first.day, eh, em))
 
             ev = Event()
+            ev.add("uid", f"{uuid4()}@schedulify")
+            ev.add("dtstamp", datetime.utcnow())
             ev.add("summary", row.title or "Class")
             if row.location:
                 ev.add("location", row.location)
@@ -75,7 +78,7 @@ def build_ics(
             until_dt = tz.localize(
                 datetime(event_end.year, event_end.month, event_end.day, 23, 59, 59)
             ).astimezone(pytz.utc)
-            ev.add("rrule", {"freq": "weekly", "until": until_dt})
+            ev.add("rrule", {"freq": "weekly", "byday": code, "until": until_dt})
             cal.add_component(ev)
 
     return cal.to_ical()

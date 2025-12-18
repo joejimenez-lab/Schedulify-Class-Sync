@@ -2,7 +2,17 @@
 
 import React, { useMemo, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8001";
+// If NEXT_PUBLIC_API_BASE is set (e.g., http://127.0.0.1:8001 for local dev),
+// we will call that directly (no /api prefix).
+// If it's empty (production on Fly), we will call same-origin with a /api prefix.
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
+
+const api = (path: string) => {
+  // if API_BASE exists -> use it directly (local two-terminal dev)
+  // else -> same-origin with /api prefix (Fly single URL)
+  return API_BASE ? `${API_BASE}${path}` : `/api${path}`;
+};
+
 
 const DAY_TOKEN_MAP: Record<string, string> = {
   m: "MO",
@@ -174,7 +184,7 @@ export default function HomePage() {
       }
       fd.append("include_heuristic_hint", String(includeHint));
 
-      const response = await fetch(`${API_BASE}/extract-gemini`, {
+      const response = await fetch(api("/extract-gemini"), {
         method: "POST",
         body: fd,
       });
@@ -233,7 +243,7 @@ export default function HomePage() {
         end_date: endDate.trim(),
         events: preparedEvents,
       };
-      const response = await fetch(`${API_BASE}/ics`, {
+      const response = await fetch(api("/ics"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
