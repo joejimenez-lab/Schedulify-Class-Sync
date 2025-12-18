@@ -295,6 +295,13 @@ select {
   margin-bottom: 12px;
 }
 
+.event-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .event-grid {
   display: grid;
   gap: 12px;
@@ -304,8 +311,12 @@ select {
 .link {
   background: none;
   border: none;
-  color: #ef4444;
+  color: #4f46e5;
   font-weight: 600;
+}
+
+.link-danger {
+  color: #ef4444;
 }
 
 .footer-card {

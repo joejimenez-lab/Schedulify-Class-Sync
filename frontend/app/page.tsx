@@ -100,6 +100,108 @@ const makeDownload = (blob: Blob, filename: string) => {
   URL.revokeObjectURL(url);
 };
 
+const DAY_INDEX: Record<string, number> = {
+  SU: 0,
+  MO: 1,
+  TU: 2,
+  WE: 3,
+  TH: 4,
+  FR: 5,
+  SA: 6,
+};
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+const normalizeDay = (day: string): string | null => {
+  const key = day.trim().toUpperCase().slice(0, 2);
+  return DAY_INDEX[key as keyof typeof DAY_INDEX] !== undefined ? key : null;
+};
+
+const parseTime = (value?: string | null): { hour: number; minute: number } | null => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^(\d{1,2})(?::?(\d{2}))?\s*(AM|PM)?$/i);
+  if (!match) return null;
+  let hour = parseInt(match[1], 10);
+  const minute = parseInt(match[2] || "0", 10);
+  const ampm = match[3]?.toUpperCase();
+  if (ampm === "PM" && hour !== 12) hour += 12;
+  if (ampm === "AM" && hour === 12) hour = 0;
+  if (hour > 23 || minute > 59) return null;
+  return { hour, minute };
+};
+
+const firstOccurrenceDate = (startDate: string, days: string[]): string | null => {
+  if (!startDate || !days?.length) return null;
+  const base = new Date(`${startDate}T00:00:00`);
+  if (Number.isNaN(base.getTime())) return null;
+  const dayIndexes = days
+    .map(normalizeDay)
+    .filter((d): d is keyof typeof DAY_INDEX => Boolean(d));
+  if (!dayIndexes.length) return null;
+  const baseDow = base.getDay();
+  let best: Date | undefined;
+  dayIndexes.forEach((d) => {
+    const targetDow = DAY_INDEX[d];
+    const diff = (targetDow - baseDow + 7) % 7;
+    const candidate = new Date(base);
+    candidate.setDate(base.getDate() + diff);
+    if (!best || candidate < best) {
+      best = candidate;
+    }
+  });
+  if (!best) return null;
+  const yyyy = best.getFullYear();
+  const mm = pad2(best.getMonth() + 1);
+  const dd = pad2(best.getDate());
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const toGCalStamp = (datePart: string, time: { hour: number; minute: number }) => {
+  const [y, m, d] = datePart.split("-").map((n) => parseInt(n, 10));
+  if (!y || !m || !d) return null;
+  return `${y}${pad2(m)}${pad2(d)}T${pad2(time.hour)}${pad2(time.minute)}00`;
+};
+
+const buildGoogleCalendarUrl = (
+  evt: EventDraft,
+  timezone: string,
+  globalStartDate: string
+): string | null => {
+  const baseStart = evt.start_date?.trim() || globalStartDate.trim();
+  if (!baseStart) return null;
+
+  const startDate = firstOccurrenceDate(baseStart, evt.days || []);
+  if (!startDate) return null;
+
+  const startTime = parseTime(evt.start_time);
+  const endTime = parseTime(evt.end_time);
+  if (!startTime || !endTime) return null;
+
+  const startStamp = toGCalStamp(startDate, startTime);
+  const endStamp = toGCalStamp(startDate, endTime);
+  if (!startStamp || !endStamp) return null;
+
+  const title = evt.title?.trim() || "Class meeting";
+  const detailsParts: string[] = [];
+  if (evt.notes?.trim()) detailsParts.push(evt.notes.trim());
+  if (evt.instructor?.trim()) detailsParts.push(`Instructor: ${evt.instructor.trim()}`);
+  if (evt.days?.length) detailsParts.push(`Meets: ${evt.days.join(", ")}`);
+  const details = detailsParts.join("\n") || "Added from Schedulify Class Sync";
+  const location = evt.location?.trim() || "";
+  const tz = (timezone || "UTC").trim() || "UTC";
+
+  return (
+    "https://calendar.google.com/calendar/render?action=TEMPLATE" +
+    `&text=${encodeURIComponent(title)}` +
+    `&details=${encodeURIComponent(details)}` +
+    `&location=${encodeURIComponent(location)}` +
+    `&dates=${startStamp}/${endStamp}` +
+    `&ctz=${encodeURIComponent(tz)}`
+  );
+};
+
 export default function HomePage() {
   const initialTimezone = useMemo(() => {
     try {
@@ -376,74 +478,86 @@ export default function HomePage() {
               <h2>3. Review & tweak classes</h2>
               <p>Edit any field (title, days, time, location, notes).</p>
             </div>
-            <button className="btn btn-ghost" onClick={addEmptyEvent}>+ Add class</button>
+            <button className="btn btn-ghost" onClick={addEmptyEvent}>
+              + Add class
+            </button>
           </div>
           <div className="event-list">
-            {events.map((evt, index) => (
-              <div key={`evt-${index}`} className="event-row">
-                <div className="event-row__header">
-                  <strong>Class {index + 1}</strong>
-                  <button className="link" onClick={() => removeEvent(index)}>
-                    Remove
-                  </button>
+            {events.map((evt, index) => {
+              const gcalUrl = buildGoogleCalendarUrl(evt, timezone, startDate);
+              return (
+                <div key={`evt-${index}`} className="event-row">
+                  <div className="event-row__header">
+                    <strong>Class {index + 1}</strong>
+                    <div className="event-row__actions">
+                      {gcalUrl && (
+                        <a className="link" href={gcalUrl} target="_blank" rel="noopener noreferrer">
+                          Add to Google Calendar
+                        </a>
+                      )}
+                      <button className="link link-danger" onClick={() => removeEvent(index)}>
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                  <div className="event-grid">
+                    <label className="field">
+                      <span>Title</span>
+                      <input
+                        value={evt.title}
+                        onChange={(e) => updateEvent(index, { title: e.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Days (MO,TU,WE…)</span>
+                      <input
+                        value={evt.days.join(", ")}
+                        onChange={(e) => updateEvent(index, { days: normalizeDaysInput(e.target.value) })}
+                        placeholder="MO,WE or Mon/Wed"
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Start time</span>
+                      <input
+                        value={evt.start_time}
+                        onChange={(e) => updateEvent(index, { start_time: e.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>End time</span>
+                      <input
+                        value={evt.end_time}
+                        onChange={(e) => updateEvent(index, { end_time: e.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Location</span>
+                      <input
+                        value={evt.location || ""}
+                        onChange={(e) => updateEvent(index, { location: e.target.value })}
+                        placeholder="Room / Zoom"
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Instructor</span>
+                      <input
+                        value={evt.instructor || ""}
+                        onChange={(e) => updateEvent(index, { instructor: e.target.value })}
+                      />
+                    </label>
+                    <label className="field field-full">
+                      <span>Notes</span>
+                      <textarea
+                        value={evt.notes || ""}
+                        rows={2}
+                        onChange={(e) => updateEvent(index, { notes: e.target.value })}
+                        placeholder="Section, lab, reminders"
+                      />
+                    </label>
+                  </div>
                 </div>
-                <div className="event-grid">
-                  <label className="field">
-                    <span>Title</span>
-                    <input
-                      value={evt.title}
-                      onChange={(e) => updateEvent(index, { title: e.target.value })}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Days (MO,TU,WE…)</span>
-                    <input
-                      value={evt.days.join(", ")}
-                      onChange={(e) => updateEvent(index, { days: normalizeDaysInput(e.target.value) })}
-                      placeholder="MO,WE or Mon/Wed"
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Start time</span>
-                    <input
-                      value={evt.start_time}
-                      onChange={(e) => updateEvent(index, { start_time: e.target.value })}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>End time</span>
-                    <input
-                      value={evt.end_time}
-                      onChange={(e) => updateEvent(index, { end_time: e.target.value })}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Location</span>
-                    <input
-                      value={evt.location || ""}
-                      onChange={(e) => updateEvent(index, { location: e.target.value })}
-                      placeholder="Room / Zoom"
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Instructor</span>
-                    <input
-                      value={evt.instructor || ""}
-                      onChange={(e) => updateEvent(index, { instructor: e.target.value })}
-                    />
-                  </label>
-                  <label className="field field-full">
-                    <span>Notes</span>
-                    <textarea
-                      value={evt.notes || ""}
-                      rows={2}
-                      onChange={(e) => updateEvent(index, { notes: e.target.value })}
-                      placeholder="Section, lab, reminders"
-                    />
-                  </label>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
